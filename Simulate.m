@@ -1,0 +1,334 @@
+%function [h] = Simulate(mProp1, mProp2)
+% Constants
+dt = 0.001;
+hLaunchPad = 181; % initial height in meters
+finert = 0.3; % inert mass estimate
+tToW = 1.4; % Thrust to weight ratio of each stage
+mPay = 5; % payload mass, kg
+
+storeData = true;
+mProp1 = 221.75; % mass of stage 1 propellant
+mProp2 = 49.45; % mass of stage 2 propellant
+
+stage1Mass = getstagemass(finert, mProp1);
+stage2Mass = getstagemass(finert, mProp2);
+mInitial = stage1Mass + stage2Mass + mPay; 
+
+% Get the initial masses at the beginning of each stage burn
+stage1InitialMass = mInitial;
+stage2InitialMass = stage2Mass + mPay;
+
+m = mInitial; % initialize mass to mInitial
+h = hLaunchPad; % initialize height to launch pad
+v = 0; % initialize rocket velocity to zero
+
+time = 0;
+
+if storeData
+    % Preallocate Storage Variables
+    % use mdot and dt to estimate size
+    mdot1 = getfuelparams(stage1InitialMass, hLaunchPad, tToW);
+    mdot2 = getfuelparams(stage2InitialMass, 6e4, tToW);
+    burnTime1 = mProp1 / mdot1;
+    burnTime2Estimate = mProp2 / mdot2;
+    arraySize = round((burnTime1 + burnTime2Estimate) / dt);
+
+    thrustArray = zeros(arraySize, 2);
+    weightArray = zeros(arraySize, 2);
+    dragArray = zeros(arraySize, 2);
+    accelArray = zeros(arraySize, 2);
+    velocityArray = zeros(arraySize, 2);
+    heightArray = zeros(arraySize, 2);
+    massArray = zeros(arraySize, 2);
+
+    idx = 1;
+end
+
+% Simulate the portion of the flight for stage 1
+while m > mInitial - mProp1
+    % Calculate Current State
+    dm = getdm(dt, stage1InitialMass, hLaunchPad, tToW);
+    [rho, pAmbient] = getpp(h);
+    thrust = getthrust(pAmbient, stage1InitialMass, hLaunchPad, tToW);
+    weight = getweight(m, h);
+    drag = getdrag(rho, v);
+    fnet = getfnet(thrust, weight, drag);
+    accel = getaccel(fnet, m);
+    
+    if storeData
+        % Save Current State
+        thrustArray(idx, :) = [time, thrust];
+        weightArray(idx, :) = [time, weight];
+        dragArray(idx, :) = [time, drag];
+        accelArray(idx, :) = [time, accel];
+        velocityArray(idx, :) = [time, v];
+        heightArray(idx, :) = [time, h];
+        massArray(idx, :) = [time, m];
+        
+        idx = idx + 1;
+    end
+    
+    % Prepare Next State
+    vnew = getvel(v, accel, dt);
+    hnew = gethigh(h, vnew, dt);
+    mnew = getmnew(m, dm);
+    
+    % Update Next State
+    time = time + dt;
+    v = vnew;
+    h = hnew;
+    m = mnew;
+end
+
+tEndStage1 = time;
+
+% Pre Stage 1 Separation 1-second Delay
+while time < tEndStage1 + 1
+    % Calculate Current State
+    dm = 0;
+    [rho, ~] = getpp(h);
+    thrust = 0;
+    weight = getweight(m, h);
+    drag = getdrag(rho, v);
+    fnet = getfnet(thrust, weight, drag);
+    accel = getaccel(fnet, m);
+    
+    if storeData
+        % Save Current State
+        thrustArray(idx, :) = [time, thrust];
+        weightArray(idx, :) = [time, weight];
+        dragArray(idx, :) = [time, drag];
+        accelArray(idx, :) = [time, accel];
+        velocityArray(idx, :) = [time, v];
+        heightArray(idx, :) = [time, h];
+        massArray(idx, :) = [time, m];
+        
+        idx = idx + 1;
+    end
+    
+    % Prepare Next State
+    vnew = getvel(v, accel, dt);
+    hnew = gethigh(h, vnew, dt);
+    mnew = getmnew(m, dm);
+    
+    % Update Next State
+    time = time + dt;
+    v = vnew;
+    h = hnew;
+    m = mnew;
+end
+
+% Drop Stage 1
+m = mInitial - stage1Mass;
+
+% Post Stage 1 Separation 1-second Delay
+while time < tEndStage1 + 2
+    % Calculate Current State
+    dm = 0;
+    [rho, ~] = getpp(h);
+    thrust = 0;
+    weight = getweight(m, h);
+    drag = getdrag(rho, v);
+    fnet = getfnet(thrust, weight, drag);
+    accel = getaccel(fnet, m);
+    
+    if storeData
+        % Save Current State
+        thrustArray(idx, :) = [time, thrust];
+        weightArray(idx, :) = [time, weight];
+        dragArray(idx, :) = [time, drag];
+        accelArray(idx, :) = [time, accel];
+        velocityArray(idx, :) = [time, v];
+        heightArray(idx, :) = [time, h];
+        massArray(idx, :) = [time, m];
+        
+        idx = idx + 1;
+    end
+    
+    % Prepare Next State
+    vnew = getvel(v, accel, dt);
+    hnew = gethigh(h, vnew, dt);
+    mnew = getmnew(m, dm);
+    
+    % Update Next State
+    time = time + dt;
+    v = vnew;
+    h = hnew;
+    m = mnew;
+end
+
+% Capture the height before stage 2 starts
+hStartStage2 = h;
+
+% Simulate the portion of the flight for stage 2
+while m > mInitial - stage1Mass - mProp2
+    % Calculate Current State
+    dm = getdm(dt, stage2InitialMass, hStartStage2, tToW);
+    [rho, pAmbient] = getpp(h);
+    thrust = getthrust(pAmbient, stage2InitialMass, hStartStage2, tToW);
+    weight = getweight(m, h);
+    drag = getdrag(rho, v);
+    fnet = getfnet(thrust, weight, drag);
+    accel = getaccel(fnet, m);
+    
+    if storeData
+        % Save Current State
+        thrustArray(idx, :) = [time, thrust];
+        weightArray(idx, :) = [time, weight];
+        dragArray(idx, :) = [time, drag];
+        accelArray(idx, :) = [time, accel];
+        velocityArray(idx, :) = [time, v];
+        heightArray(idx, :) = [time, h];
+        massArray(idx, :) = [time, m];
+        
+        idx = idx + 1;
+    end
+    
+    % Prepare Next State
+    vnew = getvel(v, accel, dt);
+    hnew = gethigh(h, vnew, dt);
+    mnew = getmnew(m, dm);
+    
+    % Update Next State
+    time = time + dt;
+    v = vnew;
+    h = hnew;
+    m = mnew;
+end
+
+tEndStage2 = time;
+
+% Pre Stage 2 Separation 1-second Delay
+while time < tEndStage2 + 1
+    % Calculate Current State
+    dm = 0;
+    [rho, ~] = getpp(h);
+    thrust = 0;
+    weight = getweight(m, h);
+    drag = getdrag(rho, v);
+    fnet = getfnet(thrust, weight, drag);
+    accel = getaccel(fnet, m);
+    
+    if storeData
+        % Save Current State
+        thrustArray(idx, :) = [time, thrust];
+        weightArray(idx, :) = [time, weight];
+        dragArray(idx, :) = [time, drag];
+        accelArray(idx, :) = [time, accel];
+        velocityArray(idx, :) = [time, v];
+        heightArray(idx, :) = [time, h];
+        massArray(idx, :) = [time, m];
+        
+        idx = idx + 1;
+    end
+    
+    % Prepare Next State
+    vnew = getvel(v, accel, dt);
+    hnew = gethigh(h, vnew, dt);
+    mnew = getmnew(m, dm);
+    
+    % Update Next State
+    time = time + dt;
+    v = vnew;
+    h = hnew;
+    m = mnew;
+end
+
+% Drop the rest of the weight
+m = mPay;
+
+% Coast Phase
+while v > 0
+    % Calculate Current State
+    dm = 0;
+    [rho, ~] = getpp(h);
+    thrust = 0;
+    weight = getweight(m, h);
+    drag = getdrag(rho, v);
+    fnet = getfnet(thrust, weight, drag);
+    accel = getaccel(fnet, m);
+    
+    if storeData
+        % Save Current State
+        thrustArray(idx, :) = [time, thrust];
+        weightArray(idx, :) = [time, weight];
+        dragArray(idx, :) = [time, drag];
+        accelArray(idx, :) = [time, accel];
+        velocityArray(idx, :) = [time, v];
+        heightArray(idx, :) = [time, h];
+        massArray(idx, :) = [time, m];
+        
+        idx = idx + 1;
+    end
+    
+    % Prepare Next State
+    vnew = getvel(v, accel, dt);
+    hnew = gethigh(h, vnew, dt);
+    mnew = getmnew(m, dm);
+    
+    % Update Next State
+    time = time + dt;
+    v = vnew;
+    h = hnew;
+    m = mnew;
+end
+
+% Plot Results
+
+if storeData
+    % Save Current State
+    time = thrustArray(:,1);
+    
+    figure('Renderer', 'painters', 'Position', [10 10 900 600]);
+    plot(time, thrustArray(:,2), 'r', 'LineWidth', 1.5);
+    title('Thrust vs Time') %creates a title
+    xlabel('Time (s)') %labels x axis
+    ylabel('Thrust (N)') %labels y axis
+    grid on
+
+    figure('Renderer', 'painters', 'Position', [10 10 900 600]);
+    plot(time, dragArray(:,2), 'g', 'LineWidth', 1.5);
+    title('Drag vs Time') %creates a title
+    xlabel('Time (s)') %labels x axis
+    ylabel('Drag (N)') %labels y axis
+    grid on
+    
+    figure('Renderer', 'painters', 'Position', [10 10 900 600]);
+    plot(time, weightArray(:,2), 'b', 'LineWidth', 1.5);
+    title('Weight vs Time') %creates a title
+    xlabel('Time (s)') %labels x axis
+    ylabel('Weight (N)') %labels y axis
+    grid on
+    
+    figure('Renderer', 'painters', 'Position', [10 10 900 600]);
+    plot1 = [thrustArray(:,2), weightArray(:,2), dragArray(:,2)];
+    plot(time, plot1, 'LineWidth', 1.5);
+    title('Thrust, Drag, and Weight vs Time') %creates a title
+    xlabel('Time (s)') %labels x axis
+    ylabel('Newtons') %labels y axis
+    grid on
+    legend('Thrust', 'Weight', 'Drag', 'Location', "Best");
+    
+    figure('Renderer', 'painters', 'Position', [100 100 900 600]);
+    subplot(2,2,1);
+    plot(time, heightArray(:,2), 'b');
+    title('Height vs Time') %creates a title
+    xlabel('Time (s)') %labels x axis
+    ylabel('Height (m)') %labels y axis
+    grid on
+    
+    subplot(2,2,3);
+    plot(time, velocityArray(:,2), 'r');
+    title('Velocity vs Time') %creates a title
+    xlabel('Time (s)') %labels x axis
+    ylabel('Velocity (m/s)') %labels y axis
+    grid on
+    
+    subplot(2,2,2);
+    plot(time, accelArray(:,2), 'g');
+    title('Acceleration vs Time') %creates a title
+    xlabel('Time (s)') %labels x axis
+    ylabel('Acceleration (m/s^2)') %labels y axis
+    grid on
+end
+    
