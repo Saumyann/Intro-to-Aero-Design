@@ -1,0 +1,3 @@
+The code calculates the thrust, drag, and acceleration at certain time intervals throughout the rocket flight. 
+The code uses a software called NASA CEA to calculate certain aspects of the fuel chose (APCP-composite). 
+These parameters are then used to calculate the flight parameters for the rocket. 
